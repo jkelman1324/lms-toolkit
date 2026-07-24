@@ -80,6 +80,30 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
     r'/course/modedit\.php\?update=(\d+)': {
         'final_selector': 'input[name="grade[modgrade_point]"]',
     },
+    r'/grade/report/grader/index\.php\?id=(\d+)': {
+        'decompose_selectors': [
+            'div.container-fluid', 
+            'caption', 
+            'tr[class=""]', 
+            'div#sticky-footer', 
+            'script', 
+            'nav', 
+            'header', 
+            'footer', 
+            'div.drawer', 
+            'button', 
+            'span', 
+            'i', 
+            'img', 
+            'label', 
+            'a:not(.gradeitemheader)'
+        ],
+        'attrs_to_keep': {
+            'th': ['class', 'data-itemid'],
+            'input': ['max'],
+        },
+        'remove_all_attrs_selectors': ['a', 'div', 'body', 'tr'],
+    }
 }
 """ Regex matches to Moodle URLs and corresponding HTML clean kwargs. """
 
@@ -275,9 +299,9 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
 
 def clean_html(
         html: str,
-        decompose_selectors: typing.List[str],
-        attrs_to_keep: typing.Dict[str, typing.List[str]],
-        remove_all_attrs_selectors: typing.List[str],
+        decompose_selectors: typing.List[str] = [],
+        attrs_to_keep: typing.Dict[str, typing.List[str]] = {},
+        remove_all_attrs_selectors: typing.List[str] = [],
         final_selector: str = 'body',
         ) -> str:
     """
