@@ -82,28 +82,30 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
     },
     r'/grade/report/grader/index\.php\?id=(\d+)': {
         'decompose_selectors': [
-            'div.container-fluid', 
-            'caption', 
-            'tr[class=""]', 
-            'div#sticky-footer', 
-            'script', 
-            'nav', 
-            'header', 
-            'footer', 
-            'div.drawer', 
-            'button', 
-            'span', 
-            'i', 
-            'img', 
-            'label', 
+            'div.container-fluid',
+            'caption',
+            'tr[class=""]',
+            'div#sticky-footer',
+            'script',
+            'nav',
+            'header',
+            'footer',
+            'div.drawer',
+            'button',
+            'span',
+            'i',
+            'img',
+            'label',
             'a:not(.gradeitemheader)'
         ],
         'attrs_to_keep': {
             'th': ['class', 'data-itemid'],
+            'td': ['class'],
             'input': ['max'],
         },
         'remove_all_attrs_selectors': ['a', 'div', 'body', 'tr'],
-    }
+        'final_selector': 'table',
+    },
 }
 """ Regex matches to Moodle URLs and corresponding HTML clean kwargs. """
 
@@ -299,37 +301,78 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
 
 def clean_html(
         html: str,
-        decompose_selectors: typing.List[str] = [],
-        attrs_to_keep: typing.Dict[str, typing.List[str]] = {},
-        remove_all_attrs_selectors: typing.List[str] = [],
+        decompose_selectors: typing.Union[typing.List[str], None] = None,
+        attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
+        classes_to_keep: typing.Union[typing.Dict[str. typing.List[str]], None] = None,
+        remove_all_attrs_selectors: typing.Union[typing.List[str], None] = None,
+        hoisting_selectors: typing.Union[typing.Dict[str, str], None] = None,
         final_selector: str = 'body',
         ) -> str:
     """
     General purpose HTML cleaning function.
 
     attrs_to_keep: { selector: [attribute, ...] }
+    classes_to_keep: { selector: [class, ...] }
+    hoisting_selectors: { outer: inner }
     """
+
+    if (remove_all_attrs_selectors is None):
+        remove_all_attrs_selectors = []
+
+    if (attrs_to_keep is None):
+        attrs_to_keep = {}
+
+    if (classes_to_keep is None):
+        classes_to_keep = {}
+
+    if (remove_all_attrs_selectors is None):
+        remove_all_attrs_selectors = []
+
+    if (hoisting_selectors is None):
+        hoisting_selectors = {}
 
     document = bs4.BeautifulSoup(html, 'html.parser')
 
+    # Decompose Elements
     for selector in decompose_selectors:
-        elements = document.select(selector)
-        for element in elements:
+        for element in document.select(selector):
             element.decompose()
 
+    # Keep Attributes
     for element_selector, attrs in attrs_to_keep.items():
-        elements = document.select(element_selector)
-        for element in elements:
+        for element in document.select(element_selector):
             # Remove extra attributes by keeping only select attributes and replacing the existing attribute dict.
             element.attrs = {attr: element.attrs[attr] for attr in attrs if (attr in element.attrs)}
 
+    # Keep Classes
+    for element_selector, keep_classes in classes_to_keep.items():
+        for element in document.select(element_selector):
+            classes = element.get("class")
+
+            if (len(classes) == 0):
+                continue
+
+            # Keep only classes listed for this selector.
+            kept = [keep_class for keep_class in classes if (keep_class in keep_classes)]
+
+            element["class"] = kept
+
+    # Remove All Attributes
     for selector in remove_all_attrs_selectors:
-        elements = document.select(selector)
-        for element in elements:
-            # Remove all attributes.
+        for element in document.select(selector):
             element.attrs.clear()
 
-    return str(document.select(final_selector))
+    # Element Hoisting
+    for outer_selector, inner_selector in hoisting_selectors.keys.items():
+        for outer in document.select(outer_selector):
+            inner = outer.select_one(inner_selector)
+
+            if (inner is None):
+                continue
+
+            outer.replace_with(inner.extract())
+
+    return str(document.select(final_selector)).replace('\n', '')
 
 def finalize_moodle_exchange(exchange: edq.net.exchange.HTTPExchange) -> edq.net.exchange.HTTPExchange:
     """ Finalize Moodle exchanges. """
