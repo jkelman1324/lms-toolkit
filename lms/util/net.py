@@ -67,15 +67,36 @@ MOODLE_FINALIZE_REMOVE_PARAMS: typing.Set[str] = {
 """ Keys to remove from Moodle headers. """
 
 MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
+    r'/login/index\.php': {
+        'delete_element_selectors': ['script', 'footer'],
+        'remove_all_attrs_selectors': ['body', 'div'],
+        'hoisting_selectors': {
+            'div#page-wrapper': 'input[name="logintoken"]',
+        },
+    },
     r'/user/index\.php\?id=(\d+)': {
-        'decompose_selectors': ['tr.emptyrow', 'div[data-status="Active"]'],
-        'attrs_to_keep': {'a': ['data-column']},
-        'remove_all_attrs_selectors': ['span'],
+        'delete_element_selectors': [
+            'tr.emptyrow',
+            'div[data-status="Active"]',
+            'i',
+            'th.a',
+        ],
+        'attrs_to_keep': {
+            'a': ['data-column'],
+            'th': ['class'],
+            'td': ['class'],
+        },
+        'remove_all_attrs_selectors': ['tr', 'span'],
         'final_selector': 'table#participants',
     },
-    r'/course/view\.php\?id=(\d+)': {
-        'decompose_selectors': ['tr.emptyrow', 'div[data-status="Active"]'],
-        'final_selector': 'ul[data-for=cmlist]',
+    r'/user/profile.php': {
+        'filter_children_by_text': {
+            'div.card-body': ('h3', 'Course details'),
+        },
+        'hoisting_selectors': {
+            'div.card-body ul': 'div.card-body ul li ul',
+        },
+        'final_selector': 'div.card-body',
     },
 }
 """ Regex matches to Moodle URLs and corresponding HTML clean kwargs. """
@@ -264,31 +285,52 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
     # Endpoint-Specific Tasks
 
     # Clean HTML responses.
-    for (pattern, clean) in MOODLE_HTML_CLEAN.items():
-        if(re.search(pattern, response.url.strip())):
-            body = clean_html(body, **clean)
+    for (pattern, clean_params) in MOODLE_HTML_CLEAN.items():
+        if (re.search(pattern, response.url.strip())):
+            body = clean_html(body, **clean_params)
 
     return body
 
 def clean_html(
         html: str,
-        decompose_selectors: typing.Union[typing.List[str], None] = None,
+        filter_children_by_text: typing.Union[typing.Dict[str, typing.Tuple(str, str)], None] = None,
+        delete_element_selectors: typing.Union[typing.List[str], None] = None,
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         remove_all_attrs_selectors: typing.Union[typing.List[str], None] = None,
         hoisting_selectors: typing.Union[typing.Dict[str, str], None] = None,
+        replacements: typing.Union[typing.List[typing.Tuple(str, str)]] = [(r'\n', '')],
         final_selector: str = 'body',
         ) -> str:
     """
     General purpose HTML cleaning function.
 
+    filter_children_by_text: { parent_selector: (child_selector, text) }
     attrs_to_keep: { selector: [attribute, ...] }
     classes_to_keep: { selector: [class, ...] }
-    hoisting_selectors: { outer: inner }
+    hoisting_selectors: { parent_selector: child_selector }
+    replacements: [ (pattern, replacement) ]
+
+    The filter_children_by_text operation filters children elements based on the text of a grandchild element.
+
+    The delete_element_selectors operation deletes all selected elements.
+
+    The attrs_to_keep operation allows for preserving necessary attributes and removing unlisted attributes for selected elements.
+
+    The classes_to_keep operation filters out all unlisted classes in the selected elements.
+
+    The remove_all_attrs_selectors operation removes all attributes in the selected elements.
+
+    The hoisting_selectors operation replaces a parent element with a child element.
+
+    The replacements operation will perform a replacement for provided patterns with the corresponding replacement values.
     """
 
-    if (decompose_selectors is None):
-        decompose_selectors = []
+    if (filter_children_by_text is None):
+        filter_children_by_text = {}
+
+    if (delete_element_selectors is None):
+        delete_element_selectors = []
 
     if (attrs_to_keep is None):
         attrs_to_keep = {}
@@ -304,22 +346,30 @@ def clean_html(
 
     document = bs4.BeautifulSoup(html, 'html.parser')
 
-    # Decompose Elements
-    for selector in decompose_selectors:
+    # Filter Children by Text
+    for (parent_selector, value) in filter_children_by_text.items():
+        children = document.select(parent_selector)
+        for child in children:
+            text_element = child.select_one(value[0])
+            if (text_element is None or text_element.get_text() != value[1]):
+                child.decompose()
+
+    # Delete Elements
+    for selector in delete_element_selectors:
         for element in document.select(selector):
             element.decompose()
 
     # Keep Attributes
-    for element_selector, attrs in attrs_to_keep.items():
+    for (element_selector, attrs) in attrs_to_keep.items():
         for element in document.select(element_selector):
             # Remove extra attributes by keeping only select attributes and replacing the existing attribute dict.
             element.attrs = {attr: element.attrs[attr] for attr in attrs if (attr in element.attrs)}
 
     # Keep Classes
-    for element_selector, keep_classes in classes_to_keep.items():
+    for (element_selector, keep_classes) in classes_to_keep.items():
         for element in document.select(element_selector):
             classes = element.get('class')
-            if (classes is None or len(classes) == 0):
+            if ((classes is None) or (len(classes) == 0)):
                 continue
 
             # Keep only classes listed for this selector.
@@ -333,16 +383,20 @@ def clean_html(
             element.attrs.clear()
 
     # Element Hoisting
-    for outer_selector, inner_selector in hoisting_selectors.items():
-        for outer in document.select(outer_selector):
-            inner = outer.select_one(inner_selector)
-
-            if (inner is None):
+    for (parent_selector, child_selector) in hoisting_selectors.items():
+        for parent in document.select(parent_selector):
+            child = parent.select_one(child_selector)
+            if (child is None):
                 continue
 
-            outer.replace_with(inner.extract())
+            parent.replace_with(child.extract())
 
-    return str(document.select(final_selector)).replace('\n', '')
+    # Replacements
+    document_string = str(document.select(final_selector))
+    for replacement in replacements:
+        document_string = re.sub(replacement[0], replacement[1], document_string)
+
+    return document_string
 
 def finalize_moodle_exchange(exchange: edq.net.exchange.HTTPExchange) -> edq.net.exchange.HTTPExchange:
     """ Finalize Moodle exchanges. """
