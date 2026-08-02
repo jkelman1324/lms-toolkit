@@ -77,9 +77,6 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
         'decompose_selectors': ['tr.emptyrow', 'div[data-status="Active"]'],
         'final_selector': 'ul[data-for=cmlist]',
     },
-    r'/course/modedit\.php\?update=(\d+)': {
-        'final_selector': 'input[name="grade[modgrade_point]"]',
-    },
 }
 """ Regex matches to Moodle URLs and corresponding HTML clean kwargs. """
 
@@ -277,7 +274,7 @@ def clean_html(
         html: str,
         decompose_selectors: typing.Union[typing.List[str], None] = None,
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
-        classes_to_keep: typing.Union[typing.Dict[str. typing.List[str]], None] = None,
+        classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         remove_all_attrs_selectors: typing.Union[typing.List[str], None] = None,
         hoisting_selectors: typing.Union[typing.Dict[str, str], None] = None,
         final_selector: str = 'body',
@@ -290,8 +287,8 @@ def clean_html(
     hoisting_selectors: { outer: inner }
     """
 
-    if (remove_all_attrs_selectors is None):
-        remove_all_attrs_selectors = []
+    if (decompose_selectors is None):
+        decompose_selectors = []
 
     if (attrs_to_keep is None):
         attrs_to_keep = {}
@@ -321,15 +318,14 @@ def clean_html(
     # Keep Classes
     for element_selector, keep_classes in classes_to_keep.items():
         for element in document.select(element_selector):
-            classes = element.get("class")
-
-            if (len(classes) == 0):
+            classes = element.get('class')
+            if (classes is None or len(classes) == 0):
                 continue
 
             # Keep only classes listed for this selector.
             kept = [keep_class for keep_class in classes if (keep_class in keep_classes)]
 
-            element["class"] = kept
+            element['class'] = kept  # type: ignore[assignment]
 
     # Remove All Attributes
     for selector in remove_all_attrs_selectors:
@@ -337,7 +333,7 @@ def clean_html(
             element.attrs.clear()
 
     # Element Hoisting
-    for outer_selector, inner_selector in hoisting_selectors.keys.items():
+    for outer_selector, inner_selector in hoisting_selectors.items():
         for outer in document.select(outer_selector):
             inner = outer.select_one(inner_selector)
 
