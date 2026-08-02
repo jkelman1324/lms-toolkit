@@ -293,13 +293,13 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
 
 def clean_html(
         html: str,
-        filter_children_by_text: typing.Union[typing.Dict[str, typing.Tuple(str, str)], None] = None,
+        filter_children_by_text: typing.Union[typing.Dict[str, typing.Tuple[str, str]], None] = None,
         delete_element_selectors: typing.Union[typing.List[str], None] = None,
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         remove_all_attrs_selectors: typing.Union[typing.List[str], None] = None,
         hoisting_selectors: typing.Union[typing.Dict[str, str], None] = None,
-        replacements: typing.Union[typing.List[typing.Tuple(str, str)]] = [(r'\n', '')],
+        replacements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
         final_selector: str = 'body',
         ) -> str:
     """
@@ -344,6 +344,9 @@ def clean_html(
     if (hoisting_selectors is None):
         hoisting_selectors = {}
 
+    if (replacements is None):
+        replacements = [(r'\n', '')]
+
     document = bs4.BeautifulSoup(html, 'html.parser')
 
     # Filter Children by Text
@@ -385,7 +388,7 @@ def clean_html(
     # Element Hoisting
     for (parent_selector, child_selector) in hoisting_selectors.items():
         for parent in document.select(parent_selector):
-            child = parent.select_one(child_selector)
+            child = parent.select_one(child_selector)  # type: ignore[assignment]
             if (child is None):
                 continue
 
