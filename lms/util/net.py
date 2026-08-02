@@ -126,8 +126,8 @@ def clean_blackboard_response(response: requests.Response, body: str) -> str:
     body = _clean_base_response(response, body)
 
     # Work on both request and response headers.
-    for headers in [response.headers, response.request.headers]:  # type: ignore[attr-defined]
-        for key in list(headers.keys()):
+    for headers in [response.headers, response.request.headers]:
+        for key in list(headers.keys()):  # type: ignore[attr-defined]
             if (key.strip().lower() in BLACKBOARD_CLEAN_REMOVE_HEADERS):
                 headers.pop(key, None)  # type: ignore[attr-defined]
 
