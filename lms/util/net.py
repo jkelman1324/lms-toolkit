@@ -86,7 +86,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
             'th': ['class'],
             'td': ['class'],
         },
-        'remove_all_attrs_selectors': ['tr', 'span'],
+        'remove_all_attrs_selectors': ['tr'],
         'final_selector': 'table#participants',
     },
     r'/user/profile.php': {
