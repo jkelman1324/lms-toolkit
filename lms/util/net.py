@@ -90,7 +90,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
         'final_selector': 'table#participants',
     },
     r'/user/profile.php': {
-        'filter_children_by_text': {
+        'filter_elements_by_descendant': {
             'div.card-body': ('h3', 'Course details'),
         },
         'hoisting_selectors': {
@@ -293,7 +293,7 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
 
 def clean_html(
         html: str,
-        filter_children_by_text: typing.Union[typing.Dict[str, typing.Tuple[str, str]], None] = None,
+        filter_elements_by_descendant: typing.Union[typing.Dict[str, typing.Tuple[str, str]], None] = None,
         delete_element_selectors: typing.Union[typing.List[str], None] = None,
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
@@ -305,29 +305,30 @@ def clean_html(
     """
     General purpose HTML cleaning function.
 
-    filter_children_by_text: { parent_selector: (child_selector, text) }
-    attrs_to_keep: { selector: [attribute, ...] }
-    classes_to_keep: { selector: [class, ...] }
-    hoisting_selectors: { parent_selector: child_selector }
-    replacements: [ (pattern, replacement) ]
+    filter_elements_by_descendant: { selector: (descendant_selector, text) }
+    Removes all elements matching selector if the element's descendant does not exist or does not have the specified text.
 
-    The filter_children_by_text operation filters children elements based on the text of a grandchild element.
+    delete_element_selectors: [ selector, ... ]
+    Deletes all elements matching selector.
 
-    The delete_element_selectors operation deletes all selected elements.
+    attrs_to_keep: { selector: [attribute, ...], ... }
+    Preserves necessary attributes and removes unlisted attributes for elements matching the selector.
 
-    The attrs_to_keep operation allows for preserving necessary attributes and removing unlisted attributes for selected elements.
+    classes_to_keep: { selector: [class, ...], ... }
+    Preserves necessary classes and removes unlisted classes for elements matching the selector.
 
-    The classes_to_keep operation filters out all unlisted classes in the selected elements.
+    remove_all_attrs_selectors: [ selector, ... ]
+    Removes all attributes of elements matching the selector.
 
-    The remove_all_attrs_selectors operation removes all attributes in the selected elements.
+    hoisting_selectors: { parent_selector: child_selector, ... }
+    Replaces all parent elements matching parent_selector with the first child element matching child_selector.
 
-    The hoisting_selectors operation replaces a parent element with a child element.
-
-    The replacements operation will perform a replacement for provided patterns with the corresponding replacement values.
+    replacements: [ (pattern, replacement), ... ]
+    Performs a replacement for all matches to the regular expression pattern with the corresponding replacement value.
     """
 
-    if (filter_children_by_text is None):
-        filter_children_by_text = {}
+    if (filter_elements_by_descendant is None):
+        filter_elements_by_descendant = {}
 
     if (delete_element_selectors is None):
         delete_element_selectors = []
@@ -349,13 +350,13 @@ def clean_html(
 
     document = bs4.BeautifulSoup(html, 'html.parser')
 
-    # Filter Children by Text
-    for (parent_selector, value) in filter_children_by_text.items():
-        children = document.select(parent_selector)
-        for child in children:
-            text_element = child.select_one(value[0])
-            if (text_element is None or text_element.get_text() != value[1]):
-                child.decompose()
+    # Filter Elements by Descendant
+    for (selector, value) in filter_elements_by_descendant.items():
+        elements = document.select(selector)
+        for element in elements:
+            descendant = element.select_one(value[0])
+            if (descendant is None or descendant.get_text() != value[1]):
+                element.decompose()
 
     # Delete Elements
     for selector in delete_element_selectors:
