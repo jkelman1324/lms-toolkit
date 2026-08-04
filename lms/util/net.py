@@ -68,14 +68,14 @@ MOODLE_FINALIZE_REMOVE_PARAMS: typing.Set[str] = {
 
 MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
     r'/login/index\.php': {
-        'delete_element_selectors': ['script', 'footer'],
-        'remove_all_attrs_selectors': ['body', 'div'],
-        'hoisting_selectors': {
+        'delete_elements': ['script', 'footer'],
+        'remove_all_attrs': ['body', 'div'],
+        'hoist_elements': {
             'div#page-wrapper': 'input[name="logintoken"]',
         },
     },
     r'/user/index\.php\?id=(\d+)': {
-        'delete_element_selectors': [
+        'delete_elements': [
             'tr.emptyrow',
             'div[data-status="Active"]',
             'i',
@@ -86,14 +86,14 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
             'th': ['class'],
             'td': ['class'],
         },
-        'remove_all_attrs_selectors': ['tr'],
+        'remove_all_attrs': ['tr'],
         'final_selector': 'table#participants',
     },
     r'/user/profile.php': {
         'filter_elements_by_descendant': {
             'div.card-body': ('h3', 'Course details'),
         },
-        'hoisting_selectors': {
+        'hoist_elements': {
             'div.card-body ul': 'div.card-body ul li ul',
         },
         'final_selector': 'div.card-body',
@@ -300,44 +300,57 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
 def clean_html(
         html: str,
         filter_elements_by_descendant: typing.Union[typing.Dict[str, typing.Tuple[str, str]], None] = None,
-        delete_element_selectors: typing.Union[typing.List[str], None] = None,
+        delete_elements: typing.Union[typing.List[str], None] = None,
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
-        remove_all_attrs_selectors: typing.Union[typing.List[str], None] = None,
-        hoisting_selectors: typing.Union[typing.Dict[str, str], None] = None,
+        remove_all_attrs: typing.Union[typing.List[str], None] = None,
+        hoist_elements: typing.Union[typing.Dict[str, str], None] = None,
         replacements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
         final_selector: str = 'body',
         ) -> str:
     """
     General purpose HTML cleaning function.
 
-    filter_elements_by_descendant: { selector: (descendant_selector, text) }
-    Removes all elements matching selector if the element's descendant does not exist or does not have the specified text.
+    filter_elements_by_descendant: { selector: (descendant_selector, text), ... }
+    Removes all elements matching a selector if the element's descendant does not exist or does not have the specified text.
+    Example:
+    filter_elements_by_descendant({ div: (h2, 'Hello World!') })
+    <html>
+        <div>
+            <h2>Hello World!</h2>
+        </div>
+    -    <div>
+    -        <h2>Other text.</h2>
+    -    </div>
+    -    <div>
+    -        <p>No h2 element.</p>
+    -    </div>
+    </html>
 
-    delete_element_selectors: [ selector, ... ]
-    Deletes all elements matching selector.
+    delete_elements: [ selector, ... ]
+    Deletes all elements matching a selector.
 
     attrs_to_keep: { selector: [attribute, ...], ... }
-    Preserves necessary attributes and removes unlisted attributes for elements matching the selector.
+    Preserves listed attributes and removes unlisted attributes for elements matching the selector.
 
     classes_to_keep: { selector: [class, ...], ... }
-    Preserves necessary classes and removes unlisted classes for elements matching the selector.
+    Preserves listed classes and removes unlisted classes for elements matching the selector.
 
-    remove_all_attrs_selectors: [ selector, ... ]
-    Removes all attributes of elements matching the selector.
+    remove_all_attrs: [ selector, ... ]
+    Removes all attributes of elements matching a selector.
 
-    hoisting_selectors: { parent_selector: child_selector, ... }
-    Replaces all parent elements matching parent_selector with the first child element matching child_selector.
+    hoist_elements: { parent_selector: child_selector, ... }
+    Each element matching a parent_selector is replaced by the first child element matching the corresponding child_selector.
 
     replacements: [ (pattern, replacement), ... ]
-    Performs a replacement for all matches to the regular expression pattern with the corresponding replacement value.
+    Performs a replacement for all pattern matches.
     """
 
     if (filter_elements_by_descendant is None):
         filter_elements_by_descendant = {}
 
-    if (delete_element_selectors is None):
-        delete_element_selectors = []
+    if (delete_elements is None):
+        delete_elements = []
 
     if (attrs_to_keep is None):
         attrs_to_keep = {}
@@ -345,11 +358,11 @@ def clean_html(
     if (classes_to_keep is None):
         classes_to_keep = {}
 
-    if (remove_all_attrs_selectors is None):
-        remove_all_attrs_selectors = []
+    if (remove_all_attrs is None):
+        remove_all_attrs = []
 
-    if (hoisting_selectors is None):
-        hoisting_selectors = {}
+    if (hoist_elements is None):
+        hoist_elements = {}
 
     if (replacements is None):
         replacements = [(r'\n', '')]
@@ -358,14 +371,13 @@ def clean_html(
 
     # Filter Elements by Descendant
     for (selector, value) in filter_elements_by_descendant.items():
-        elements = document.select(selector)
-        for element in elements:
+        for element in document.select(selector):
             descendant = element.select_one(value[0])
             if (descendant is None or descendant.get_text() != value[1]):
                 element.decompose()
 
     # Delete Elements
-    for selector in delete_element_selectors:
+    for selector in delete_elements:
         for element in document.select(selector):
             element.decompose()
 
@@ -388,12 +400,12 @@ def clean_html(
             element['class'] = kept  # type: ignore[assignment]
 
     # Remove All Attributes
-    for selector in remove_all_attrs_selectors:
+    for selector in remove_all_attrs:
         for element in document.select(selector):
             element.attrs.clear()
 
     # Element Hoisting
-    for (parent_selector, child_selector) in hoisting_selectors.items():
+    for (parent_selector, child_selector) in hoist_elements.items():
         for parent in document.select(parent_selector):
             child = parent.select_one(child_selector)  # type: ignore[assignment]
             if (child is None):
