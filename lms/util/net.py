@@ -104,6 +104,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
 STANDARDIZED_TIMESTAMP: str = '123456789'
 STANDARDIZED_SESSION_KEY: str = 'abcABC123'
 STANDARDIZED_RANDOM_STRING: str = 'abc123'
+STANDARDIZED_LAST_ACCESS: str = '123 secs'
 
 def clean_lms_response(response: requests.Response, body: str) -> str:
     """
@@ -272,6 +273,11 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
     logintoken_match = re.search(r'name="logintoken" value="(\w+)"', body)
     if (logintoken_match is not None):
         body = body.replace(logintoken_match.group(1), STANDARDIZED_SESSION_KEY)
+
+    # Standardize last access to course.
+    last_access_match = re.search(r'(\d+) secs', body)
+    if (last_access_match is not None):
+        body = body.replace(last_access_match.group(0), STANDARDIZED_LAST_ACCESS)
 
     # Work on both request and response headers.
     for headers in [response.headers, response.request.headers]:
