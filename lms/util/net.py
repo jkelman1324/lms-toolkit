@@ -312,26 +312,19 @@ def clean_html(
     General purpose HTML cleaning function.
 
     filter_elements_by_descendant: { selector: (descendant_selector, text), ... }
-    Removes all elements matching a selector if the element's descendant does not exist or does not have the specified text.
+    Removes all elements matching a selector if the selected element's specific descendant does not exist or does not have the specified text.
     Example:
-    filter_elements_by_descendant({ div: (h2, 'Hello World!') })
-    <html>
-        <div>
-            <h2>Hello World!</h2>
-        </div>
-    -    <div>
-    -        <h2>Other text.</h2>
-    -    </div>
-    -    <div>
-    -        <p>No h2 element.</p>
-    -    </div>
-    </html>
+    filter_elements_by_descendant({ 'div': ('h2', 'Hello World!') })
+    Before:
+        <div><h2>Hello World!</h2></div><div><h2>Hello Universe!</h2></div><div><p>No h2 Element.</p></div>
+    After:
+        <div><h2>Hello World!</h2></div>
 
     delete_elements: [ selector, ... ]
-    Deletes all elements matching a selector.
+    Deletes any elements matching a selector.
 
     attrs_to_keep: { selector: [attribute, ...], ... }
-    Preserves listed attributes and removes unlisted attributes for elements matching the selector.
+    Keeps only the listed attributes and removes all other attributes from elements matching the selector.
 
     classes_to_keep: { selector: [class, ...], ... }
     Preserves listed classes and removes unlisted classes for elements matching the selector.
@@ -340,10 +333,10 @@ def clean_html(
     Removes all attributes of elements matching a selector.
 
     hoist_elements: { parent_selector: child_selector, ... }
-    Each element matching a parent_selector is replaced by the first child element matching the corresponding child_selector.
+    Each element matching a parent selector is replaced by the first child element matching the corresponding child selector.
 
     replacements: [ (pattern, replacement), ... ]
-    Performs a replacement for all pattern matches.
+    Performs a replacement for all regex matches.
     """
 
     if (filter_elements_by_descendant is None):
