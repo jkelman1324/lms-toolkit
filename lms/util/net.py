@@ -99,7 +99,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
         'final_selector': 'div.card-body',
     },
 }
-""" Regex matches to Moodle URLs and corresponding HTML clean kwargs. """
+""" A mapping of Moodle URL patterns to clean_html() kwargs. """
 
 STANDARDIZED_TIMESTAMP: str = '123456789'
 STANDARDIZED_SESSION_KEY: str = 'abcABC123'
@@ -313,27 +313,28 @@ def clean_html(
 
     filter_elements_by_descendant: { selector: (descendant_selector, text), ... }
     Removes all elements matching a selector if the selected element's specific descendant does not exist or does not have the specified text.
-    Example:
-    filter_elements_by_descendant({ 'div': ('h2', 'Hello World!') })
-    Before:
-        <div><h2>Hello World!</h2></div><div><h2>Hello Universe!</h2></div><div><p>No h2 Element.</p></div>
-    After:
-        <div><h2>Hello World!</h2></div>
+    For example:
+    ```
+    >>> body = '<div><h2>Hello World!</h2></div><div><h2>Hello Universe!</h2></div><div><p>No h2 Element.</p></div>'
+    >>> clean_html(body, filter_elements_by_descendant = {'div': ('h2', 'Hello World!')})
+    <div><h2>Hello World!</h2></div>
+    ```
 
     delete_elements: [ selector, ... ]
-    Deletes any elements matching a selector.
+    Deletes any matching elements.
 
     attrs_to_keep: { selector: [attribute, ...], ... }
-    Keeps only the listed attributes and removes all other attributes from elements matching the selector.
+    Keeps only the listed attributes of elements matching the selector.
 
     classes_to_keep: { selector: [class, ...], ... }
-    Preserves listed classes and removes unlisted classes for elements matching the selector.
+    Keeps only listed classes of elements matching the selector.
 
     remove_all_attrs: [ selector, ... ]
-    Removes all attributes of elements matching a selector.
+    Removes all attributes of matching elements.
 
     hoist_elements: { parent_selector: child_selector, ... }
-    Each element matching a parent selector is replaced by the first child element matching the corresponding child selector.
+    For each pair of selectors, the parent element is replaced by the first matching child within the parent.
+    No replacement occurs if both matches are not found.
 
     replacements: [ (pattern, replacement), ... ]
     Performs a replacement for all regex matches.
