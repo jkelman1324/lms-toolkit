@@ -105,7 +105,6 @@ STANDARDIZED_TIMESTAMP: str = '123456789'
 STANDARDIZED_SESSION_KEY: str = 'abcABC123'
 STANDARDIZED_RANDOM_STRING: str = 'abc123'
 
-
 def clean_lms_response(response: requests.Response, body: str) -> str:
     """
     A ResponseModifierFunction that attempt to identify
@@ -364,10 +363,10 @@ def clean_html(
     document = bs4.BeautifulSoup(html, 'html.parser')
 
     # Filter Elements by Descendant
-    for (selector, value) in filter_elements_by_descendant.items():
+    for (selector, (descendant_selector, text)) in filter_elements_by_descendant.items():
         for element in document.select(selector):
-            descendant = element.select_one(value[0])
-            if (descendant is None or descendant.get_text() != value[1]):
+            descendant = element.select_one(descendant_selector)
+            if ((descendant is None) or (descendant.get_text() != text)):
                 element.decompose()
 
     # Delete Elements
@@ -409,8 +408,8 @@ def clean_html(
 
     # Replacements
     document_string = str(document.select(final_selector))
-    for replacement in replacements:
-        document_string = re.sub(replacement[0], replacement[1], document_string)
+    for (pattern, replacement) in replacements:
+        document_string = re.sub(pattern, replacement, document_string)
 
     return document_string
 
