@@ -66,6 +66,41 @@ MOODLE_FINALIZE_REMOVE_PARAMS: typing.Set[str] = {
 }
 """ Keys to remove from Moodle headers. """
 
+MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
+    r'/login/index\.php': {
+        'delete_elements': ['script', 'footer'],
+        'remove_all_attrs': ['body', 'div'],
+        'hoist_elements': {
+            'div#page-wrapper': 'input[name="logintoken"]',
+        },
+    },
+    r'/user/index\.php\?id=(\d+)': {
+        'delete_elements': [
+            'tr.emptyrow',
+            'div[data-status="Active"]',
+            'i',
+            'th.a',
+        ],
+        'attrs_to_keep': {
+            'a': ['data-column'],
+            'th': ['class'],
+            'td': ['class'],
+        },
+        'remove_all_attrs': ['tr'],
+        'final_selector': 'table#participants',
+    },
+    r'/user/profile.php': {
+        'filter_elements_by_descendant': {
+            'div.card-body': ('h3', 'Course details'),
+        },
+        'hoist_elements': {
+            'div.card-body ul': 'div.card-body ul li ul',
+        },
+        'final_selector': 'div.card-body',
+    },
+}
+""" A mapping of Moodle URL patterns to clean_html() kwargs. """
+
 STANDARDIZED_TIMESTAMP: str = '123456789'
 STANDARDIZED_SESSION_KEY: str = 'abcABC123'
 STANDARDIZED_RANDOM_STRING: str = 'abc123'
@@ -238,40 +273,145 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
     if (logintoken_match is not None):
         body = body.replace(logintoken_match.group(1), STANDARDIZED_SESSION_KEY)
 
+    # Standardize last access to course.
+    last_access_match = re.search(r'(\d+) secs', body)
+    if (last_access_match is not None):
+        body = body.replace(last_access_match.group(0), f'{STANDARDIZED_TIMESTAMP} secs')
+
     # Work on both request and response headers.
     for headers in [response.headers, response.request.headers]:
         for key in list(headers.keys()):  # type: ignore[attr-defined]
             if (key.strip().lower() in MOODLE_CLEAN_REMOVE_HEADERS):
                 headers.pop(key, None)  # type: ignore[attr-defined]
 
+    # Remove Chunking
+    response.headers.pop('transfer-encoding', None)
+
     # Endpoint-Specific Tasks
 
-    # Remove extra data from the course participants response.
-    if (re.search(r'/user/index\.php\?id=(\d+)', response.url.strip())):
-        document = bs4.BeautifulSoup(body, 'html.parser')
-
-        decompose_selectors = ['tr.emptyrow', 'div[data-status="Active"]']
-        for selector in decompose_selectors:
-            elements = document.select(selector)
-            for element in elements:
-                element.decompose()
-
-        a_tags = document.select('a')
-        for a_tag in a_tags:
-            # Remove extra attributes by keeping only select attributes and replacing the existing attribute dict.
-            a_tag.attrs = {attr: a_tag.attrs[attr] for attr in ['data-column'] if (attr in a_tag.attrs)}
-
-        spans = document.select('tbody tr td span')
-        for span in spans:
-            # Remove all attributes.
-            span.attrs.clear()
-
-        body = str(document.select('table#participants'))
-
-        # Remove Chunking
-        response.headers.pop('transfer-encoding', None)
+    # Clean HTML responses.
+    for (pattern, clean_params) in MOODLE_HTML_CLEAN.items():
+        if (re.search(pattern, response.url.strip())):
+            body = clean_html(body, **clean_params)
 
     return body
+
+def clean_html(
+        html: str,
+        filter_elements_by_descendant: typing.Union[typing.Dict[str, typing.Tuple[str, str]], None] = None,
+        delete_elements: typing.Union[typing.List[str], None] = None,
+        attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
+        classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
+        remove_all_attrs: typing.Union[typing.List[str], None] = None,
+        hoist_elements: typing.Union[typing.Dict[str, str], None] = None,
+        replacements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
+        final_selector: str = 'body',
+        ) -> str:
+    """
+    General purpose HTML cleaning function.
+
+    filter_elements_by_descendant: { selector: (descendant_selector, text), ... }
+    Removes all elements matching a selector if the selected element's specific descendant does not exist or does not have the specified text.
+    For example:
+    ```
+    >>> body = '<div><h2>Hello World!</h2></div><div><h2>Hello Universe!</h2></div><div><p>No h2 Element.</p></div>'
+    >>> clean_html(body, filter_elements_by_descendant = {'div': ('h2', 'Hello World!')})
+    <div><h2>Hello World!</h2></div>
+    ```
+
+    delete_elements: [ selector, ... ]
+    Deletes any matching elements.
+
+    attrs_to_keep: { selector: [attribute, ...], ... }
+    Keeps only the listed attributes of elements matching the selector.
+
+    classes_to_keep: { selector: [class, ...], ... }
+    Keeps only listed classes of elements matching the selector.
+
+    remove_all_attrs: [ selector, ... ]
+    Removes all attributes of matching elements.
+
+    hoist_elements: { parent_selector: child_selector, ... }
+    For each pair of selectors, the parent element is replaced by the first matching child within the parent.
+    No replacement occurs if both matches are not found.
+
+    replacements: [ (pattern, replacement), ... ]
+    Performs a replacement for all regex matches.
+    """
+
+    if (filter_elements_by_descendant is None):
+        filter_elements_by_descendant = {}
+
+    if (delete_elements is None):
+        delete_elements = []
+
+    if (attrs_to_keep is None):
+        attrs_to_keep = {}
+
+    if (classes_to_keep is None):
+        classes_to_keep = {}
+
+    if (remove_all_attrs is None):
+        remove_all_attrs = []
+
+    if (hoist_elements is None):
+        hoist_elements = {}
+
+    if (replacements is None):
+        replacements = [(r'\n', '')]
+
+    document = bs4.BeautifulSoup(html, 'html.parser')
+
+    # Filter Elements by Descendant
+    for (selector, (descendant_selector, text)) in filter_elements_by_descendant.items():
+        for element in document.select(selector):
+            descendant = element.select_one(descendant_selector)
+            if ((descendant is None) or (descendant.get_text() != text)):
+                element.decompose()
+
+    # Delete Elements
+    for selector in delete_elements:
+        for element in document.select(selector):
+            element.decompose()
+
+    # Keep Attributes
+    for (element_selector, attrs) in attrs_to_keep.items():
+        for element in document.select(element_selector):
+            # Remove extra attributes by keeping only select attributes and replacing the existing attribute dict.
+            element.attrs = {attr: element.attrs[attr] for attr in attrs if (attr in element.attrs)}
+
+    # Keep Classes
+    for (element_selector, keep_classes) in classes_to_keep.items():
+        for element in document.select(element_selector):
+            classes = element.get('class')
+            if ((classes is None) or (len(classes) == 0)):
+                continue
+
+            # Keep only classes listed for this selector.
+            kept = [keep_class for keep_class in classes if (keep_class in keep_classes)]
+
+            element['class'] = kept  # type: ignore[assignment]
+
+    # Remove All Attributes
+    for selector in remove_all_attrs:
+        for element in document.select(selector):
+            element.attrs.clear()
+
+    # Element Hoisting
+    for (parent_selector, child_selector) in hoist_elements.items():
+        for parent in document.select(parent_selector):
+            child = parent.select_one(child_selector)  # type: ignore[assignment]
+            if (child is None):
+                continue
+
+            parent.replace_with(child.extract())
+
+    # Replacements
+    document_string = str(document.select(final_selector))
+    for (pattern, replacement) in replacements:
+        document_string = re.sub(pattern, replacement, document_string)
+
+    return document_string
 
 def finalize_moodle_exchange(exchange: edq.net.exchange.HTTPExchange) -> edq.net.exchange.HTTPExchange:
     """ Finalize Moodle exchanges. """
