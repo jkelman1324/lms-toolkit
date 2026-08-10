@@ -71,7 +71,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
         'delete_elements': ['script', 'footer'],
         'remove_all_attrs': ['body', 'div'],
         'hoist_elements': {
-            'div#page-wrapper': 'input[name="logintoken"]',
+            ('div#page-wrapper', 'input[name="logintoken"]'),
         },
     },
     r'/user/index\.php\?id=(\d+)': {
@@ -94,7 +94,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
             'div.card-body': ('h3', 'Course details'),
         },
         'hoist_elements': {
-            'div.card-body ul': 'div.card-body ul li ul',
+            ('div.card-body ul', 'div.card-body ul li ul'),
         },
         'final_selector': 'div.card-body',
     },
@@ -119,8 +119,8 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
             'div',
         ],
         'hoist_elements': {
-            'div.d-flex.flex-column.h-100': 'a.gradeitemheader',
-            'div.d-flex.flex-column.h-100': 'input[title="Grade"]',
+            ('div.d-flex.flex-column.h-100', 'a.gradeitemheader'),
+            ('div.d-flex.flex-column.h-100', 'input[title="Grade"]'),
         },
         'replacements': [
             (r'class="[^"]*\b(c\d+)\b[^"]*"', r'class="\1"'),
@@ -337,7 +337,7 @@ def clean_html(
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         remove_all_attrs: typing.Union[typing.List[str], None] = None,
-        hoist_elements: typing.Union[typing.Dict[str, str], None] = None,
+        hoist_elements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
         replacements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
         final_selector: str = 'body',
         ) -> str:
@@ -365,7 +365,7 @@ def clean_html(
     remove_all_attrs: [ selector, ... ]
     Removes all attributes of matching elements.
 
-    hoist_elements: { parent_selector: child_selector, ... }
+    hoist_elements: [ (parent_selector, child_selector), ... ]
     For each pair of selectors, the parent element is replaced by the first matching child within the parent.
     No replacement occurs if both matches are not found.
 
@@ -389,7 +389,7 @@ def clean_html(
         remove_all_attrs = []
 
     if (hoist_elements is None):
-        hoist_elements = {}
+        hoist_elements = []
 
     if (replacements is None):
         replacements = [(r'\n', '')]
@@ -432,7 +432,7 @@ def clean_html(
             element.attrs.clear()
 
     # Element Hoisting
-    for (parent_selector, child_selector) in hoist_elements.items():
+    for (parent_selector, child_selector) in hoist_elements:
         for parent in document.select(parent_selector):
             child = parent.select_one(child_selector)  # type: ignore[assignment]
             if (child is None):
