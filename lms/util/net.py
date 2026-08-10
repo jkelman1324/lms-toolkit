@@ -98,6 +98,40 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
         },
         'final_selector': 'div.card-body',
     },
+    r'/grade/report/grader/index\.php\?id=(\d+)': {
+        'delete_elements': [
+            'caption',
+            'tr[class=""]',
+            'tr[class="avg"]',
+            'i',
+            'button',
+            'a.dropdown-item',
+            'img',
+            'label',
+        ],
+        'attrs_to_keep': {
+            'input': ['max'],
+            'a': ['class'],
+            'th': ['class', 'data-itemid'],
+            'td': ['class'],
+        },
+        'remove_all_attrs': [
+            'div',
+        ],
+        'hoist_elements': {
+            'div.d-flex.flex-column.h-100': 'a.gradeitemheader',
+            'div.d-flex.flex-column.h-100': 'input[title="Grade"]',
+        },
+        'replacements': [
+            (r'class="[^"]*\b(c\d+)\b[^"]*"', r'class="\1"'),
+            (r'\n', ''),
+            (r'\s+aria-(?:label|hidden|expanded)="[^"]*"', ''),
+            (r'\s+role\s*=\s*(?:"[^"]*"|\'[^\']*\')', ''),
+            (r'<div>', ''),
+            (r'</div>', ''),
+        ],
+        'final_selector': 'tbody',
+    },
 }
 """ A mapping of Moodle URL patterns to clean_html() kwargs. """
 
@@ -418,6 +452,10 @@ def finalize_moodle_exchange(exchange: edq.net.exchange.HTTPExchange) -> edq.net
 
     for param in MOODLE_FINALIZE_REMOVE_PARAMS:
         exchange.parameters.pop(param, None)
+
+    # Standardize session key.
+    if ('sesskey' in exchange.parameters):
+        exchange.parameters['sesskey'] = STANDARDIZED_SESSION_KEY
 
     return exchange
 

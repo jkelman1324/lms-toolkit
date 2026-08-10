@@ -57,6 +57,9 @@ class MoodleBackend(lms.model.backend.APIBackend):
         self._session_headers: typing.Union[typing.Dict[str, typing.Any], None] = None
         """ The headers (e.g., cookies) for our logged in Moodle session. """
 
+        self._session_key: str = ""
+        """ The Moodle browser session key. """
+
     def _enable_edit_mode(self, url: str) -> bool:
         """
         Enable Moodle edit mode for a specific url.
@@ -68,12 +71,14 @@ class MoodleBackend(lms.model.backend.APIBackend):
             _logger.warning("Unable to enable edit mode.")
             return False
 
-        sesskey_match = re.search(r'"sesskey":"([^"]+)"', response.text)
-        if (sesskey_match):
-            sesskey = sesskey_match.group(1)
-        else:
-            _logger.warning("Unable to retrieve session key.")
-            return False
+        # Store the Moodle browser session key.
+        if (self._session_key == ""):
+            sesskey_match = re.search(r'"sesskey":"([^"]+)"', response.text)
+            if (sesskey_match):
+                self._session_key = sesskey_match.group(1)
+            else:
+                _logger.warning("Unable to retrieve session key.")
+                return False
 
         document = bs4.BeautifulSoup(response.text, 'html.parser')
 
@@ -84,11 +89,11 @@ class MoodleBackend(lms.model.backend.APIBackend):
 
             context = int(context_str)
         except AttributeError:
-            _logger.warning("Unable to enable edit mode.")
+            _logger.warning("Unable to retrieve page context id.")
             return False
 
         params = {
-            'sesskey': sesskey,
+            'sesskey': self._session_key,
             'info': 'core_change_editmode',
         }
 
@@ -136,6 +141,22 @@ class MoodleBackend(lms.model.backend.APIBackend):
             }
 
         return lms.util.net.parse_cookies(response.headers.get('set-cookie', None))
+
+    def _common_moodle_get_request(self, url: str,
+            enable_edit_mode: bool = False,
+            **kwargs: typing.Any) -> typing.Tuple[requests.Response, bool]:
+        """
+        Common Moodle request wrapper.
+        Returns the request response and edit mode status for the requested page.
+        """
+
+        edit_mode_enabled = False
+        if (enable_edit_mode):
+            edit_mode_enabled = self._enable_edit_mode(url)
+
+        response, _ = edq.net.request.make_get(url, headers = self.get_standard_headers(), **kwargs)
+
+        return (response, edit_mode_enabled)
 
     def _login(self, update_server: bool = True) -> None:
         """
@@ -313,18 +334,18 @@ class MoodleBackend(lms.model.backend.APIBackend):
         return users
 
     def courses_assignments_list(self,
-                course_id: str,
-                **kwargs: typing.Any) -> typing.List[lms.model.assignments.Assignment]:
+            course_id: str,
+            **kwargs: typing.Any) -> typing.List[lms.model.assignments.Assignment]:
         self._login()
 
         url = f"{self.server}/grade/report/grader/index.php?id={course_id}"
 
         # Attempt to enable edit mode on the gradebook page.
-        edit_mode_enabled = self._enable_edit_mode(url)
+        response, edit_mode_enabled = self._common_moodle_get_request(url, enable_edit_mode = True)
 
         assignments = []
         if (edit_mode_enabled):
-            response, _ = edq.net.request.make_get(url, headers = self.get_standard_headers())
+            # Fetch assignment data for users with grader permissions.
             document = bs4.BeautifulSoup(response.text, 'html.parser')
 
             activities = document.select('table#user-grades th.item')
@@ -358,7 +379,7 @@ class MoodleBackend(lms.model.backend.APIBackend):
                     points_possible = points_possible,
                 ))
         else:
-            # Fetch assignment data for non-grader users.
+            # Fetch assignment data for users without grader permissions.
             url = f"{self.server}/grade/report/user/index.php?id={course_id}"
             response, _ = edq.net.request.make_get(url, headers = self.get_standard_headers())
             document = bs4.BeautifulSoup(response.text, 'html.parser')
