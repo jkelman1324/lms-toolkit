@@ -375,7 +375,9 @@ def clean_html(
     Performs a replacement for all regex matches.
 
     final_selectors: [ selector, ...]
-    Joins all matched elements. Defaults to 'body' if None.
+    Replaces html with all matched elements.
+    Useful for targeting only the necessary parts of the response.
+    Defaults to ['body'] if None.
     """
 
     if (filter_elements_by_descendant is None):
