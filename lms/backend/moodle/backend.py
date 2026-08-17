@@ -341,7 +341,6 @@ class MoodleBackend(lms.model.backend.APIBackend):
         document = bs4.BeautifulSoup(response.text, 'html.parser')
 
         activities = document.select('table#user-grades th.item')
-
         for activity in activities:
             # Parse and store the column's class (e.g. "c0").
             target_class = None
@@ -388,7 +387,6 @@ class MoodleBackend(lms.model.backend.APIBackend):
         document = bs4.BeautifulSoup(response.text, 'html.parser')
 
         activities: typing.List[bs4.Tag] = list(document.find_all('tr[class]:not([class=""]):not(.spacer):not(.lastrow)'))
-
         for activity in activities:
             try:
                 id = str(activity.select_one('th').get('id', None).split('_')[1])  # type: ignore[union-attr]
