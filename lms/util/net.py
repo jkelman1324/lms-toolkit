@@ -70,7 +70,6 @@ MOODLE_FINALIZE_REMOVE_PARAMS: typing.Set[str] = {
 }
 """ Keys to remove from Moodle headers. """
 
-
 MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
     r'/login/index\.php': {
         'delete_elements': ['script', 'footer'],
@@ -184,9 +183,9 @@ def clean_blackboard_response(response: requests.Response, body: str) -> str:
 
     # Work on both request and response headers.
     for headers in [response.headers, response.request.headers]:
-        for key in list(headers.keys()):  # type: ignore[attr-defined]
+        for key in list(headers.keys()):
             if (key.strip().lower() in BLACKBOARD_CLEAN_REMOVE_HEADERS):
-                headers.pop(key, None)  # type: ignore[attr-defined]
+                headers.pop(key, None)
 
     # Most blackboard responses are JSON.
     try:
@@ -316,9 +315,9 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
 
     # Work on both request and response headers.
     for headers in [response.headers, response.request.headers]:
-        for key in list(headers.keys()):  # type: ignore[attr-defined]
+        for key in list(headers.keys()):
             if (key.strip().lower() in MOODLE_CLEAN_REMOVE_HEADERS):
-                headers.pop(key, None)  # type: ignore[attr-defined]
+                headers.pop(key, None)
 
     # Remove Chunking
     response.headers.pop('transfer-encoding', None)
@@ -444,7 +443,7 @@ def clean_html(
     # Element Hoisting
     for (parent_selector, child_selector) in hoist_elements:
         for parent in document.select(parent_selector):
-            child = parent.select_one(child_selector)  # type: ignore[assignment]
+            child = parent.select_one(child_selector)
             if (child is None):
                 continue
 
@@ -456,7 +455,7 @@ def clean_html(
         for element in document.select(final_selector):
             elements.append(element)
 
-    document_string = "".join(str(element) for element in elements)
+    document_string = "".join([str(element) for element in elements])
 
     # Replacements
     for (pattern, replacement) in replacements:

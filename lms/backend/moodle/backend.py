@@ -61,7 +61,7 @@ class MoodleBackend(lms.model.backend.APIBackend):
     def _get_edit_mode_page(self, url: str, **kwargs: typing.Any) -> typing.Union[requests.Response, None]:
         """
         Tries to fetch the page at the given url with edit mode enabled.
-        Returns the request response and a boolean indicating the status of edit mode.
+        Returns the response with edit mode enabled, or None if unable to get the edit mode version of the page.
         """
 
         try:
@@ -81,7 +81,7 @@ class MoodleBackend(lms.model.backend.APIBackend):
         if (element is None):
             raise lms.backend.moodle.errors.MoodleAPIBreakageError()
 
-        context_str = element.get('data-context')
+        context_str = element.get('data-context', None)
         if (context_str is None):
             raise lms.backend.moodle.errors.MoodleAPIBreakageError()
 
@@ -326,6 +326,8 @@ class MoodleBackend(lms.model.backend.APIBackend):
         # Attempt to enable edit mode on the gradebook page.
         response = self._get_edit_mode_page(url, enable_edit_mode = True)
 
+        # We expect graders to have edit mode access.
+        # If the edit mode request fails, we fall back to the non-grader gradebook page.
         if (response is not None):
             return self._fetch_assignments_grader(response)
 
