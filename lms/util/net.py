@@ -182,7 +182,8 @@ def clean_blackboard_response(response: requests.Response, body: str) -> str:
     body = _clean_base_response(response, body)
 
     # Work on both request and response headers.
-    for headers in [response.headers, response.request.headers]:
+    all_headers: typing.List[typing.Dict[str, typing.Any]] = [response.headers, response.request.headers]
+    for headers in all_headers:
         for key in list(headers.keys()):
             if (key.strip().lower() in BLACKBOARD_CLEAN_REMOVE_HEADERS):
                 headers.pop(key, None)
@@ -314,7 +315,8 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
         body = body.replace(last_access_match.group(0), f'{STANDARDIZED_TIMESTAMP} secs')
 
     # Work on both request and response headers.
-    for headers in [response.headers, response.request.headers]:
+    all_headers: typing.List[typing.Dict[str, typing.Any]] = [response.headers, response.request.headers]
+    for headers in all_headers:
         for key in list(headers.keys()):
             if (key.strip().lower() in MOODLE_CLEAN_REMOVE_HEADERS):
                 headers.pop(key, None)
