@@ -14,10 +14,6 @@ import requests
 
 import lms.model.constants
 
-STANDARDIZED_TIMESTAMP: str = '123456789'
-STANDARDIZED_SESSION_KEY: str = 'abcABC123'
-STANDARDIZED_RANDOM_STRING: str = 'abc123'
-
 CANVAS_CLEAN_REMOVE_CONTENT_KEYS: typing.List[str] = [
     'created_at',
     'ics',
@@ -75,7 +71,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
         'delete_elements': ['script', 'footer'],
         'remove_all_attrs': ['body', 'div'],
         'hoist_elements': {
-            ('div#page-wrapper', 'input[name="logintoken"]'),
+            'div#page-wrapper': 'input[name="logintoken"]',
         },
     },
     r'/user/index\.php\?id=(\d+)': {
@@ -91,54 +87,23 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
             'td': ['class'],
         },
         'remove_all_attrs': ['tr'],
-        'final_selectors': ['table#participants'],
+        'final_selector': 'table#participants',
     },
     r'/user/profile.php': {
         'filter_elements_by_descendant': {
             'div.card-body': ('h3', 'Course details'),
         },
         'hoist_elements': {
-            ('div.card-body ul', 'div.card-body ul li ul'),
+            'div.card-body ul': 'div.card-body ul li ul',
         },
-        'final_selectors': ['div.card-body'],
-    },
-    r'/grade/report/grader/index\.php\?id=(\d+)': {
-        'delete_elements': [
-            'caption',
-            'tr[class=""]',
-            'tr[class="avg"]',
-            'i',
-            'button',
-            'a.dropdown-item',
-            'img',
-            'label',
-        ],
-        'attrs_to_keep': {
-            'input': ['max'],
-            'a': ['class'],
-            'th': ['class', 'data-itemid'],
-            'td': ['class'],
-        },
-        'remove_all_attrs': [
-            'div',
-        ],
-        'hoist_elements': {
-            ('div.d-flex.flex-column.h-100', 'a.gradeitemheader'),
-            ('div.d-flex.flex-column.h-100', 'input[title="Grade"]'),
-        },
-        'replacements': [
-            (r'class="[^"]*\b(c\d+)\b[^"]*"', r'class="\1"'),
-            (r'\n', ''),
-            (r'\s+aria-(?:label|hidden|expanded)="[^"]*"', ''),
-            (r'\s+role\s*=\s*(?:"[^"]*"|\'[^\']*\')', ''),
-            (r'<div>', ''),
-            (r'</div>', ''),
-            (r'(<script>)[\s\S]*?(</script>)', rf'\1M.cfg = {{"sesskey":"{STANDARDIZED_SESSION_KEY}"}}\2')
-        ],
-        'final_selectors': ['head script:not([type])', 'tbody'],
+        'final_selector': 'div.card-body',
     },
 }
 """ A mapping of Moodle URL patterns to clean_html() kwargs. """
+
+STANDARDIZED_TIMESTAMP: str = '123456789'
+STANDARDIZED_SESSION_KEY: str = 'abcABC123'
+STANDARDIZED_RANDOM_STRING: str = 'abc123'
 
 def clean_lms_response(response: requests.Response, body: str) -> str:
     """
@@ -182,11 +147,10 @@ def clean_blackboard_response(response: requests.Response, body: str) -> str:
     body = _clean_base_response(response, body)
 
     # Work on both request and response headers.
-    all_headers: typing.List[typing.Dict[str, typing.Any]] = [dict(response.headers), dict(response.request.headers)]
-    for headers in all_headers:
-        for key in list(headers.keys()):
+    for headers in [response.headers, response.request.headers]:
+        for key in list(headers.keys()):  # type: ignore[attr-defined]
             if (key.strip().lower() in BLACKBOARD_CLEAN_REMOVE_HEADERS):
-                headers.pop(key, None)
+                headers.pop(key, None)  # type: ignore[attr-defined]
 
     # Most blackboard responses are JSON.
     try:
@@ -315,11 +279,10 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
         body = body.replace(last_access_match.group(0), f'{STANDARDIZED_TIMESTAMP} secs')
 
     # Work on both request and response headers.
-    all_headers: typing.List[typing.Dict[str, typing.Any]] = [dict(response.headers), dict(response.request.headers)]
-    for headers in all_headers:
-        for key in list(headers.keys()):
+    for headers in [response.headers, response.request.headers]:
+        for key in list(headers.keys()):  # type: ignore[attr-defined]
             if (key.strip().lower() in MOODLE_CLEAN_REMOVE_HEADERS):
-                headers.pop(key, None)
+                headers.pop(key, None)  # type: ignore[attr-defined]
 
     # Remove Chunking
     response.headers.pop('transfer-encoding', None)
@@ -340,9 +303,9 @@ def clean_html(
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
         remove_all_attrs: typing.Union[typing.List[str], None] = None,
-        hoist_elements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
+        hoist_elements: typing.Union[typing.Dict[str, str], None] = None,
         replacements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
-        final_selectors: typing.Union[typing.List[str], None] = None,
+        final_selector: str = 'body',
         ) -> str:
     """
     General purpose HTML cleaning function.
@@ -368,17 +331,12 @@ def clean_html(
     remove_all_attrs: [ selector, ... ]
     Removes all attributes of matching elements.
 
-    hoist_elements: [ (parent_selector, child_selector), ... ]
+    hoist_elements: { parent_selector: child_selector, ... }
     For each pair of selectors, the parent element is replaced by the first matching child within the parent.
     No replacement occurs if both matches are not found.
 
     replacements: [ (pattern, replacement), ... ]
     Performs a replacement for all regex matches.
-
-    final_selectors: [ selector, ...]
-    Replaces html with all matched elements.
-    Useful for targeting only the necessary parts of the response.
-    Defaults to ['body'] if None.
     """
 
     if (filter_elements_by_descendant is None):
@@ -397,13 +355,10 @@ def clean_html(
         remove_all_attrs = []
 
     if (hoist_elements is None):
-        hoist_elements = []
+        hoist_elements = {}
 
     if (replacements is None):
         replacements = [(r'\n', '')]
-
-    if (final_selectors is None):
-        final_selectors = ['body']
 
     document = bs4.BeautifulSoup(html, 'html.parser')
 
@@ -443,23 +398,16 @@ def clean_html(
             element.attrs.clear()
 
     # Element Hoisting
-    for (parent_selector, child_selector) in hoist_elements:
+    for (parent_selector, child_selector) in hoist_elements.items():
         for parent in document.select(parent_selector):
-            child = parent.select_one(child_selector)
+            child = parent.select_one(child_selector)  # type: ignore[assignment]
             if (child is None):
                 continue
 
             parent.replace_with(child.extract())
 
-    # Final Selectors
-    elements = []
-    for final_selector in final_selectors:
-        for element in document.select(final_selector):
-            elements.append(element)
-
-    document_string = "".join([str(element) for element in elements])
-
     # Replacements
+    document_string = str(document.select(final_selector))
     for (pattern, replacement) in replacements:
         document_string = re.sub(pattern, replacement, document_string)
 
@@ -470,10 +418,6 @@ def finalize_moodle_exchange(exchange: edq.net.exchange.HTTPExchange) -> edq.net
 
     for param in MOODLE_FINALIZE_REMOVE_PARAMS:
         exchange.parameters.pop(param, None)
-
-    # Standardize session key.
-    if ('sesskey' in exchange.parameters):
-        exchange.parameters['sesskey'] = STANDARDIZED_SESSION_KEY
 
     return exchange
 

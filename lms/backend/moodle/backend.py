@@ -1,8 +1,6 @@
 # pylint: disable=abstract-method
 
-import json
 import logging
-import re
 import typing
 import urllib.parse
 
@@ -10,7 +8,6 @@ import bs4
 import edq.net.request
 import requests
 
-import lms.backend.moodle.errors
 import lms.model.backend
 import lms.model.constants
 import lms.util.net
@@ -57,65 +54,6 @@ class MoodleBackend(lms.model.backend.APIBackend):
 
         self._session_headers: typing.Union[typing.Dict[str, typing.Any], None] = None
         """ The headers (e.g., cookies) for our logged in Moodle session. """
-
-    def _get_edit_mode_page(self, url: str, **kwargs: typing.Any) -> typing.Union[requests.Response, None]:
-        """
-        Tries to fetch the page at the given url with edit mode enabled.
-        Returns the response with edit mode enabled, or None if unable to get the edit mode version of the page.
-        """
-
-        try:
-            response, _ = edq.net.request.make_get(url, headers = self.get_standard_headers(), **kwargs)
-        except requests.exceptions.HTTPError:
-            return None
-
-        sesskey_match = re.search(r'"sesskey":"([^"]+)"', response.text)
-        if (sesskey_match is None):
-            raise lms.backend.moodle.errors.MoodleAPIBreakageError()
-
-        sesskey = sesskey_match.group(1)
-
-        document = bs4.BeautifulSoup(response.text, 'html.parser')
-
-        element = document.select_one('input[name=setmode]')
-        if (element is None):
-            raise lms.backend.moodle.errors.MoodleAPIBreakageError()
-
-        context_str = element.get('data-context', None)
-        if (context_str is None):
-            raise lms.backend.moodle.errors.MoodleAPIBreakageError()
-
-        if (not isinstance(context_str, str)):
-            raise lms.backend.moodle.errors.MoodleAPIBreakageError()
-
-        context = int(context_str)
-
-        params = {
-            'sesskey': sesskey,
-            'info': 'core_change_editmode',
-        }
-
-        data = [
-            {
-                'index': 0,
-                'methodname': 'core_change_editmode',
-                'args': {
-                    'setmode': True,
-                    'context': context,
-                },
-            }
-        ]
-
-        response, _ = edq.net.request.make_post(
-            f"{self.server}/lib/ajax/service.php",
-            additional_requests_options = {'params': params},
-            data = json.dumps(data),
-            headers = self.get_standard_headers(),
-        )
-
-        response, _ = edq.net.request.make_get(url, headers = self.get_standard_headers(), **kwargs)
-
-        return response
 
     def reset_connection(self) -> None:
         self._session_headers = None
@@ -187,7 +125,6 @@ class MoodleBackend(lms.model.backend.APIBackend):
                 # Insert a header to identify the user.
                 'edq-lms-moodle-user': self.auth_user,
             }
-
             return
 
         # Login Failed
@@ -299,8 +236,9 @@ class MoodleBackend(lms.model.backend.APIBackend):
                 name = row.select_one(f'.cell.{classes["fullname"]} a span').get('title', None).removeprefix('__EMPTY_NAME__ ')  # type: ignore[union-attr] # pylint: disable=line-too-long
                 email = row.select_one(f'.cell.{classes["email"]}').get_text()  # type: ignore[union-attr]
                 raw_role = row.select_one(f'.cell.{classes["roles"]} span a').get_text().strip().lower()  # type: ignore[union-attr]
-            except AttributeError as ex:
-                raise lms.backend.moodle.errors.MoodleAPIBreakageError() from ex
+            except AttributeError as _:
+                _logger.warning("Unable to list users. Moodle data structure has changed. Contact project developers.")
+                continue
 
             # HACK(JK): Moodle does not allow the Guest role when loading test data, so we patch the guest role during testing.
             if (email == 'course-other@test.edulinq.org'):
@@ -315,92 +253,3 @@ class MoodleBackend(lms.model.backend.APIBackend):
             ))
 
         return users
-
-    def courses_assignments_list(self,
-            course_id: str,
-            **kwargs: typing.Any) -> typing.List[lms.model.assignments.Assignment]:
-        self._login()
-
-        url = f"{self.server}/grade/report/grader/index.php?id={course_id}"
-
-        # Attempt to enable edit mode on the gradebook page.
-        response = self._get_edit_mode_page(url, enable_edit_mode = True)
-
-        # We expect graders to have edit mode access.
-        # If the edit mode request fails, we fall back to the non-grader gradebook page.
-        if (response is not None):
-            return self._fetch_assignments_grader(response)
-
-        return self._fetch_assignments_non_grader(course_id)
-
-    def _fetch_assignments_grader(self, response: requests.Response) -> typing.List[lms.model.assignments.Assignment]:
-        """
-        Fetch assignment data for users with grader permissions.
-        """
-
-        assignments = []
-
-        document = bs4.BeautifulSoup(response.text, 'html.parser')
-
-        activities = document.select('table#user-grades th.item')
-        for activity in activities:
-            # Parse and store the column's class (e.g. "c0").
-            target_class = None
-
-            column_classes = activity.get('class', None)
-            if (column_classes is None):
-                raise lms.backend.moodle.errors.MoodleAPIBreakageError()
-
-            for column_class in column_classes:
-                if (re.search(r'^c\d+$', column_class) is not None):
-                    target_class = column_class
-                    break
-
-            try:
-                id = str(activity.get('data-itemid', None))
-                name = str(activity.select_one('a.gradeitemheader').get_text())  # type: ignore[union-attr]
-
-                points_possible_str = document.select_one(f'td.{target_class} input').get('max', None)  # type: ignore[union-attr]
-                if (not isinstance(points_possible_str, str)):
-                    points_possible = 0.0
-                else:
-                    points_possible = float(points_possible_str)
-            except AttributeError as ex:
-                raise lms.backend.moodle.errors.MoodleAPIBreakageError() from ex
-
-            assignments.append(lms.model.assignments.Assignment(
-                id = id,
-                name = name,
-                points_possible = points_possible,
-            ))
-
-        return assignments
-
-    def _fetch_assignments_non_grader(self, course_id: str) -> typing.List[lms.model.assignments.Assignment]:
-        """
-        Fetch assignment data for users without grader permissions.
-        """
-
-        assignments = []
-
-        url = f"{self.server}/grade/report/user/index.php?id={course_id}"
-        response, _ = edq.net.request.make_get(url, headers = self.get_standard_headers())
-
-        document = bs4.BeautifulSoup(response.text, 'html.parser')
-
-        activities: typing.List[bs4.Tag] = list(document.find_all('tr[class]:not([class=""]):not(.spacer):not(.lastrow)'))
-        for activity in activities:
-            try:
-                id = str(activity.select_one('th').get('id', None).split('_')[1])  # type: ignore[union-attr]
-                name = str(activity.select_one('th a').get_text())  # type: ignore[union-attr]
-                points_possible = float(activity.select_one('td.column-range').get_text().split('–')[1])  # type: ignore[union-attr]
-            except AttributeError as ex:
-                raise lms.backend.moodle.errors.MoodleAPIBreakageError() from ex
-
-            assignments.append(lms.model.assignments.Assignment(
-                id = id,
-                name = name,
-                points_possible = points_possible,
-            ))
-
-        return assignments
