@@ -61,6 +61,7 @@ MOODLE_CLEAN_REMOVE_HEADERS: typing.Set[str] = {
     'expires',
     'keep-alive',
     'last-modified',
+    'transfer-encoding',
     'vary',
 }
 """ Keys to remove from Moodle headers. """
@@ -182,10 +183,7 @@ def clean_blackboard_response(response: requests.Response, body: str) -> str:
     body = _clean_base_response(response, body)
 
     # Work on both request and response headers.
-    for headers in [response.headers, response.request.headers]:
-        for key in list(headers.keys()):  # type: ignore[attr-defined]
-            if (key.strip().lower() in BLACKBOARD_CLEAN_REMOVE_HEADERS):
-                headers.pop(key, None)  # type: ignore[attr-defined]
+    remove_headers(response, BLACKBOARD_CLEAN_REMOVE_HEADERS)
 
     # Most blackboard responses are JSON.
     try:
@@ -201,6 +199,7 @@ def clean_blackboard_response(response: requests.Response, body: str) -> str:
     body = edq.util.json.dumps(data)
 
     return body
+
 
 def clean_canvas_response(response: requests.Response, body: str) -> str:
     """
@@ -314,15 +313,7 @@ def clean_moodle_response(response: requests.Response, body: str) -> str:
         body = body.replace(last_access_match.group(0), f'{STANDARDIZED_TIMESTAMP} secs')
 
     # Work on both request and response headers.
-    for headers in [response.headers, response.request.headers]:
-        for key in list(headers.keys()):  # type: ignore[attr-defined]
-            if (key.strip().lower() in MOODLE_CLEAN_REMOVE_HEADERS):
-                headers.pop(key, None)  # type: ignore[attr-defined]
-
-    # Remove Chunking
-    response.headers.pop('transfer-encoding', None)
-
-    # Endpoint-Specific Tasks
+    remove_headers(response, MOODLE_CLEAN_REMOVE_HEADERS)
 
     # Clean HTML responses.
     for (pattern, clean_params) in MOODLE_HTML_CLEAN.items():
@@ -462,6 +453,12 @@ def clean_html(
         document_string = re.sub(pattern, replacement, document_string)
 
     return document_string
+
+def remove_headers(response: requests.Response, headers_to_remove: typing.Set[str]):
+    for headers in [response.headers, response.request.headers]:
+        for key in list(headers.keys()):  # type: ignore[attr-defined]
+            if (key.strip().lower() in headers_to_remove):
+                headers.pop(key, None)  # type: ignore[attr-defined]
 
 def finalize_moodle_exchange(exchange: edq.net.exchange.HTTPExchange) -> edq.net.exchange.HTTPExchange:
     """ Finalize Moodle exchanges. """
