@@ -364,7 +364,7 @@ def clean_html(
     replacements: [ (pattern, replacement), ... ]
     Performs a replacement for all regex matches.
 
-    final_selectors: [ selector, ...]
+    final_selectors: [ selector, ... ]
     Replaces html with all matched elements.
     Useful for targeting only the necessary parts of the response.
     Defaults to ['body'] if None.
