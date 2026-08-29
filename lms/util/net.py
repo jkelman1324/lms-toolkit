@@ -115,20 +115,25 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
             'label',
         ],
         'attrs_to_keep': {
-            'input': ['max'],
+            'input': ['max', 'name', 'data-context'],
             'a': ['class'],
             'th': ['class', 'data-itemid'],
             'td': ['class'],
+            'td input': ['max'],
+        },
+        'classes_to_keep': {
+            'th': ['item', re.compile(r'c\d+')],
+            'td': [re.compile(r'c\d+')],
         },
         'remove_all_attrs': [
             'div',
+            'tr',
         ],
         'hoist_elements': {
             ('div.d-flex.flex-column.h-100', 'a.gradeitemheader'),
             ('div.d-flex.flex-column.h-100', 'input[title="Grade"]'),
         },
         'replacements': [
-            (r'class="[^"]*\b(c\d+)\b[^"]*"', r'class="\1"'),
             (r'\n', ''),
             (r'\s+aria-(?:label|hidden|expanded)="[^"]*"', ''),
             (r'\s+role\s*=\s*(?:"[^"]*"|\'[^\']*\')', ''),
@@ -136,7 +141,7 @@ MOODLE_HTML_CLEAN: typing.Dict[str, typing.Dict[str, typing.Any]] = {
             (r'</div>', ''),
             (r'(<script>)[\s\S]*?(</script>)', rf'\1M.cfg = {{"sesskey":"{STANDARDIZED_SESSION_KEY}"}}\2')
         ],
-        'final_selectors': ['head script:not([type])', 'tbody'],
+        'final_selectors': ['head script:not([type])', 'table#user-grades', 'input[name=setmode]'],
     },
 }
 """ A mapping of Moodle URL patterns to clean_html() kwargs. """
@@ -327,7 +332,7 @@ def clean_html(
         filter_elements_by_descendant: typing.Union[typing.Dict[str, typing.Tuple[str, str]], None] = None,
         delete_elements: typing.Union[typing.List[str], None] = None,
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
-        classes_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
+        classes_to_keep: typing.Union[typing.Dict[str, typing.List[typing.Union[str, typing.Pattern[str]]]], None] = None,
         remove_all_attrs: typing.Union[typing.List[str], None] = None,
         hoist_elements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
         replacements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
@@ -422,8 +427,18 @@ def clean_html(
                 continue
 
             # Keep only classes listed for this selector.
-            kept = [keep_class for keep_class in classes if (keep_class in keep_classes)]
-
+            kept = [
+                class_name
+                for class_name in classes
+                if any(
+                    (
+                        keep_class.fullmatch(class_name)
+                        if (isinstance(keep_class, re.Pattern))
+                        else class_name == keep_class
+                    )
+                    for keep_class in keep_classes
+                )
+]
             element['class'] = kept  # type: ignore[assignment]
 
     # Remove All Attributes
@@ -454,7 +469,11 @@ def clean_html(
 
     return document_string
 
-def remove_headers(response: requests.Response, headers_to_remove: typing.Set[str]):
+def remove_headers(response: requests.Response, headers_to_remove: typing.Set[str]) -> None:
+    """
+    Remove headers from response and response's request.
+    """
+
     for headers in [response.headers, response.request.headers]:
         for key in list(headers.keys()):  # type: ignore[attr-defined]
             if (key.strip().lower() in headers_to_remove):
