@@ -356,8 +356,8 @@ def clean_html(
     attrs_to_keep: { selector: [attribute, ...], ... }
     Keeps only the listed attributes of elements matching the selector.
 
-    classes_to_keep: { selector: [class, ...], ... }
-    Keeps only listed classes of elements matching the selector.
+    classes_to_keep: { selector: [class/pattern, ...], ... }
+    Keeps only listed classes, or classes matching the pattern, of elements matching the selector.
 
     remove_all_attrs: [ selector, ... ]
     Removes all attributes of matching elements.
