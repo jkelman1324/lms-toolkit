@@ -205,7 +205,6 @@ def clean_blackboard_response(response: requests.Response, body: str) -> str:
 
     return body
 
-
 def clean_canvas_response(response: requests.Response, body: str) -> str:
     """
     See clean_lms_response(), but specifically for the Canvas LMS.
@@ -332,7 +331,7 @@ def clean_html(
         filter_elements_by_descendant: typing.Union[typing.Dict[str, typing.Tuple[str, str]], None] = None,
         delete_elements: typing.Union[typing.List[str], None] = None,
         attrs_to_keep: typing.Union[typing.Dict[str, typing.List[str]], None] = None,
-        classes_to_keep: typing.Union[typing.Dict[str, typing.List[typing.Union[str, typing.Pattern[str]]]], None] = None,
+        classes_to_keep: typing.Union[typing.Dict[str, typing.List[typing.Union[str, re.Pattern]]], None] = None,
         remove_all_attrs: typing.Union[typing.List[str], None] = None,
         hoist_elements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
         replacements: typing.Union[typing.List[typing.Tuple[str, str]], None] = None,
@@ -427,18 +426,12 @@ def clean_html(
                 continue
 
             # Keep only classes listed for this selector.
-            kept = [
-                class_name
-                for class_name in classes
-                if any(
-                    (
-                        keep_class.fullmatch(class_name)
-                        if (isinstance(keep_class, re.Pattern))
-                        else class_name == keep_class
-                    )
-                    for keep_class in keep_classes
-                )
-]
+            kept = []
+            for keep_class in keep_classes:
+                for class_name in classes:
+                    if (((isinstance(keep_class, re.Pattern)) and (keep_class.fullmatch(class_name))) or (keep_class == class_name)):
+                        kept.append(class_name)
+
             element['class'] = kept  # type: ignore[assignment]
 
     # Remove All Attributes
